@@ -1,7 +1,9 @@
 import { API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, UnknownContext } from "homebridge";
 import Api from "./api";
 import Device, { AqaraAccessory, SubClassOfDevice } from "./device";
-import AirConditioner from './devices/air_conditioner';
+import AirConditionerController from "./devices/air_conditioner_controller";
+import IRDevice from "./devices/ir_device";
+
 
 export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
 	static pluginIdentifier = 'homebridge-aqara-cloud';
@@ -11,7 +13,8 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
 	 * Device category and model mapping. Use to find the proper device driver when creating accessories
 	 */
 	static readonly DeviceCategories: [SubClassOfDevice, string[]][] = [
-		[AirConditioner, ['lumi.aircondition.acn05']]
+		[AirConditionerController, ['lumi.aircondition.acn05']],
+		[IRDevice, ['virtual.ir.fan', 'virtual.ir.tv', 'virtual.ir.default']]
 	]
 
 	/**
@@ -21,7 +24,7 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
 
 	private aqaraAccessories: Device[] = [];
 
-	/**
+	/**`
 	 * Aqara API helper
 	 */
 	public readonly aqaraApi: Api;
@@ -72,7 +75,7 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
 	 * @param      {PlatformAccessory<UnknownContext>}  accessory  The accessory
 	 */
     configureAccessory(accessory: PlatformAccessory<AqaraAccessory>): void {
-        // this.cachedAccessories.push(accessory);
+    	this.log.info(`Restore accessory ${accessory.context.deviceName} from cache.`);
         this.registerDevice(accessory);
     }
 
@@ -82,6 +85,7 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
      * @return     {Promise}
      */
     async discoverDevices() {
+    	this.log.info("Discovering devices....");
     	const data: Intent['query']['device']['info']['request'] = {
     		pageSize: 100
     	};
@@ -92,25 +96,39 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
     		const exists = response.data.result.data.find((item) => {
     			return item.did == accessory.accessory.context.did;
 			});
-    		return exists != null;
+    		if (exists != undefined) {
+    			return true;
+			}
+
+    		this.api.unregisterPlatformAccessories(
+    			AqaraCloudPlatform.pluginIdentifier, AqaraCloudPlatform.platformName, [accessory.accessory]
+			);
+
+    		return false;
 		});
 
     	const newAccessories = response.data.result.data.filter((item) => {
+    		// Filter accessories that is online (state = 1) and new
     		const exists = this.aqaraAccessories.find((device) => {
     			return device.accessory.context.did == item.did;
 			});
-    		return exists == undefined;
+    		return exists == undefined && item.state == 1;
+
 		}).map((item) => {
+			// Register the device if supported
 			const uuid = this.api.hap.uuid.generate(item.did);
 			let accessory = new this.api.platformAccessory<AqaraAccessory>(item.deviceName, uuid);
 			accessory.context = item;
 			return this.registerDevice(accessory);
+
 		}).filter((device) => {
 			return device != undefined;
 
-		}).map((device) => {
-			return device!.accessory;
-		});
+		}).map((device) => device!.accessory);
+
+    	if (newAccessories.length > 0) {
+    		this.log.info(`Registering ${newAccessories.length} new accessories`)
+		}
 
 		this.api.registerPlatformAccessories(
 			AqaraCloudPlatform.pluginIdentifier, AqaraCloudPlatform.platformName, newAccessories
@@ -121,7 +139,7 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
 	 * Create device instance from accessor
 	 * @param accessory
 	 */
-	registerDevice(accessory: PlatformAccessory<AqaraAccessory>) {
+	registerDevice(accessory: PlatformAccessory<AqaraAccessory>):Device | undefined {
 		const configuration = AqaraCloudPlatform.DeviceCategories.find((category) => {
 			const [, modes] = category;
 			return modes.includes(accessory.context.model);

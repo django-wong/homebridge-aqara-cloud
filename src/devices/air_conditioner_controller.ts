@@ -1,12 +1,19 @@
-import { Nullable } from 'hap-nodejs';
-import Device, { ResourceMapping } from '../device';
+import { stat } from 'fs';
+import { Nullable } from 'homebridge';
+import Device, {
+	CharacteristicAndResourceMapping,
+	CharacteristicValueGetterOptions,
+	CharacteristicValueSetterOptions,
+	ResourceMapping
+} from '../device';
+import AirConditioner from './air_conditioner';
 
 type GeneralACState = {
-	power: Nullable<number>,
-	mode: Nullable<number>,
-	temperature: Nullable<number>,
-	windSpeed: Nullable<number>,
-	light: Nullable<number>,
+	power: Nullable<number>
+	mode: Nullable<number>
+	temperature: Nullable<number>
+	windSpeed: Nullable<number>
+	light: Nullable<number>
 	windDirection: Nullable<number>
 };
 
@@ -15,20 +22,13 @@ export default class AirConditionerController extends Device {
 
 	static parseState(state: string): GeneralACState {
 		const result: GeneralACState = {
-			power: null,
-			mode: null,
-			temperature: null,
-			windSpeed: null,
-			light: null,
-			windDirection: null
+			power: null, mode: null, temperature: null, windSpeed: null, light: null, windDirection: null
 		};
 
 		const parts = state.split('_');
 		for (const data of parts) {
-			const t = data.substr(0, 1);
 			const v = parseInt(data.substr(1));
-
-			switch (t) {
+			switch (data.substr(0, 1)) {
 				case 'P':
 					result.power = v;
 					break;
@@ -90,50 +90,55 @@ export default class AirConditionerController extends Device {
 		return values.filter((item) => item.value != null).map((item) => item.text).join('_');
 	}
 
+
+	private createHeaterCoolerService() {
+		return {
+			service: this.Service.Thermostat,
+			characteristics: [
+				{
+					characteristic: this.Characteristic.CurrentHeatingCoolingState,
+					resource: {
+						id: '8.0.2116',
+						getter: (o) => this.readCurrentHeatingCoolingState(o)
+					}
+				},
+				{
+					characteristic: this.Characteristic.CurrentTemperature,
+					resource: {
+						id: '8.0.2116',
+						getter: (o) => this.readCurrentTemperature(o)
+					}
+				},
+				{
+					characteristic: this.Characteristic.TemperatureDisplayUnits,
+					resource: {
+						id: '8.0.2116',
+						getter: (o) => this.readTemperatureDisplayUnit(o)
+					}
+				},
+				{
+					characteristic: this.Characteristic.TargetHeatingCoolingState,
+					resource: {
+						id: '8.0.2116',
+						getter: (o) => this.readTargetCoolingState(o),
+						setter: (o) => this.setTargetHeatingCoolingState(o)
+					}
+				},
+				{
+					characteristic: this.Characteristic.TargetTemperature,
+					resource: {
+						id: '8.0.2116',
+						getter: (o) => this.readTargetTemperature(o),
+						setter: (o) => this.setTargetGTemperature(o)
+					}
+				}
+			]
+		}
+	}
+
 	get abilities(): ResourceMapping[] {
 		return [
-			{
-				service: this.Service.Thermostat,
-				characteristics: [
-					{
-						characteristic: this.Characteristic.CurrentHeatingCoolingState,
-						resource: {
-							id: '8.0.2116',
-							getter: (aqaraValue) => {
-								if (aqaraValue != null) {
-									let state = AirConditionerController.parseState(aqaraValue);
-									if (state.power == 0) {
-										return this.Characteristic.CurrentHeatingCoolingState.OFF;
-									}
-									switch (state.mode) {
-										case 0:
-											return 2;
-										case 1:
-											return 1;
-										case 2:
-											return 1;
-									}
-								}
-								return null;
-							},
-							setter: (homebridgeValue) => {
-								switch (homebridgeValue) {
-									case 0:
-										// OFF
-									case 1:
-										// HEAT
-									case 2:
-										// COOL
-									case 3:
-										// AUTO
-								}
-
-								return [null, 'ok'];
-							}
-						}
-					}
-				]
-			},
+			this.createHeaterCoolerService(),
 			{
 				service: this.Service.TemperatureSensor,
 				characteristics: [
@@ -141,9 +146,7 @@ export default class AirConditionerController extends Device {
 						characteristic: this.Characteristic.CurrentTemperature,
 						resource: {
 							id: '0.1.85',
-							getter(aqaraValue) {
-								return Math.ceil(parseFloat(aqaraValue ?? '') / 100);
-							}
+							getter: (o) => this.readSensorTemperature(o)
 						}
 					}
 				]
@@ -155,13 +158,116 @@ export default class AirConditionerController extends Device {
 						characteristic: this.Characteristic.CurrentRelativeHumidity,
 						resource: {
 							id: '0.2.85',
-							getter(aqaraValue) {
-								return Math.ceil(parseFloat(aqaraValue ?? '') / 100);
-							}
+							getter: (o) => this.readSensorRelativeHumidity(o)
 						}
 					}
 				]
 			}
 		];
+	}
+
+	initState(): Promise<void> {
+		return Promise.resolve(undefined);
+	}
+
+	async readSensorRelativeHumidity(options: CharacteristicValueGetterOptions) {
+		const value = await this.readResourceValue(
+			options.configuration.resource.id!
+		);
+		if (value != null && value) {
+			return Math.ceil(parseFloat(value) / 100);
+		}
+
+		return null;
+	}
+
+	async readSensorTemperature(options: CharacteristicValueGetterOptions) {
+		const value = await this.readResourceValue(
+			options.configuration.resource.id!
+		);
+		if (value != null && value) {
+			return Math.ceil(parseFloat(value) / 100);
+		}
+		return null;
+	}
+
+	async readTargetTemperature(options: CharacteristicValueGetterOptions) {
+		let value = await this.readResourceValue(
+			options.configuration.resource.id!
+		);
+
+		if (!value) {
+			return null;
+		}
+
+		return AirConditionerController.parseState(value || '').temperature;
+	}
+
+	async readTargetCoolingState(options: CharacteristicValueGetterOptions) {
+		let value = await this.readResourceValue(
+			options.configuration.resource.id!
+		);
+		if (!value) {
+			return null;
+		}
+
+		let state = AirConditionerController.parseState(value);
+
+		if (state.power == 1) {
+			return this.Characteristic.CurrentHeatingCoolingState.OFF;
+		}
+
+		switch (state.mode) {
+		case 0:
+			return this.Characteristic.TargetHeatingCoolingState.COOL;
+		case 1:
+			return this.Characteristic.TargetHeatingCoolingState.HEAT;
+		case 2:
+			return this.Characteristic.TargetHeatingCoolingState.AUTO;
+		default:
+			return null;
+		}
+	}
+
+	async setTargetGTemperature(options: CharacteristicValueSetterOptions) {
+		return options.value;
+	}
+
+	async setTargetHeatingCoolingState(options: CharacteristicValueSetterOptions) {
+		return options.value;
+	}
+
+	async readTemperatureDisplayUnit(options: CharacteristicValueGetterOptions) {
+		return this.Characteristic.TemperatureDisplayUnits.CELSIUS;
+	}
+
+	async readCurrentTemperature(options: CharacteristicValueGetterOptions) {
+		let value = await this.readResourceValue(
+			options.configuration.resource.id!
+		)
+		return AirConditionerController.parseState(value || '').temperature;
+	}
+
+	async readCurrentHeatingCoolingState(options: CharacteristicValueGetterOptions) {
+		let value = await this.readResourceValue(
+			options.configuration.resource.id!
+		);
+
+		let state = AirConditionerController.parseState(value || '');
+
+		if (state.power == 1) {
+			return this.Characteristic.CurrentHeatingCoolingState.OFF;
+		}
+
+		switch (state.mode) {
+		case 0:
+			return this.Characteristic.CurrentHeatingCoolingState.COOL;
+		case 1:
+			return this.Characteristic.CurrentHeatingCoolingState.HEAT;
+		case 2:
+			return this.Characteristic.CurrentHeatingCoolingState.HEAT;
+		default:
+			return null;
+		}
 	}
 }

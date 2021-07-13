@@ -115,7 +115,7 @@ export default class Api {
 		const sign = createHash('md5').update(
 			`Accesstoken=${this.accessToken}&Appid=${this.appId}&Keyid=${this.keyId}&Nonce=${nonce}&Time=${timestamp}${this.appKey}`.toLowerCase()
 		).digest('hex');
-		const headers = {
+		return {
 			Accesstoken: this.accessToken,
 			Appid: this.appId,
 			Keyid: this.keyId,
@@ -124,8 +124,6 @@ export default class Api {
 			Sign: sign,
 			Lang: this.lang
 		}
-		console.info(headers);
-		return headers;
 	}
 
 	request<R = any, T = ApiResponse<R>>(intent: string, data: PlainObject, options?: PlainObject): Promise<AxiosResponse<T>> {

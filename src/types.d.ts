@@ -38,6 +38,38 @@ interface Intent {
 					"subjectId": string
 				}>
 			}
+		},
+		ir: {
+			info: {
+				request: {
+					"did": string
+				}
+				response: {
+					"brandName": string
+					"lineupId": string
+					"controllerId": string | null
+					"createTime": number
+					"brandId": number
+					"updateTime": number
+					"type": 0 | 1 | 2
+					"did": string
+					"categoryId": number
+				}
+			},
+			keys: {
+				request: {
+					"did": string
+				}
+				response: {
+					"keys": Array<{
+						"controllerId": number
+						"irKeyId": string
+						"keyName": string,
+						"keyId": string
+					}>,
+					"type": number
+				}
+			}
 		}
 	},
 	write: {

@@ -8,22 +8,33 @@ type PromiseOr<T> = Promise<T> | T;
 
 type CharacteristicGetResult = PromiseOr<Nullable<CharacteristicValue>>
 
-type CharacteristicSetResult = PromiseOr<[Nullable<CharacteristicValue>, string]>
+type CharacteristicSetResult = PromiseOr<Nullable<CharacteristicValue>>
 
-type CharacteristicValueGetter = (value: Nullable<string>, context: any, connection: HAPConnection, resourceId: string) => CharacteristicGetResult
+export type CharacteristicValueGetterOptions = {
+	configuration: CharacteristicAndResourceMapping,
+	context: any,
+	connection: HAPConnection
+}
 
-type CharacteristicValueSetter = (value: CharacteristicValue, context: any, connection: HAPConnection, resourceId: string) => CharacteristicSetResult
+export type CharacteristicValueSetterOptions = {
+	value: CharacteristicValue
+} & CharacteristicValueGetterOptions
 
-type CharacteristicAndResourceMapping = {
+type CharacteristicValueGetter = (options: CharacteristicValueGetterOptions) => CharacteristicGetResult
+type CharacteristicValueSetter = (options: CharacteristicValueSetterOptions) => CharacteristicSetResult
+
+export type CharacteristicAndResourceMapping = {
 	characteristic: WithUUID<{new (): Characteristic}>,
 	resource: {
-		id: string,
+		id?: string,
 		getter?: CharacteristicValueGetter
 		setter?: CharacteristicValueSetter
 	}
 }
 
 export type ResourceMapping = {
+	serviceSubType?: string
+	serviceName?: string
 	service: WithUUID<typeof Service>,
 	characteristics: CharacteristicAndResourceMapping[]
 }
@@ -41,7 +52,9 @@ export type SubClassOfDevice = new (platform: AqaraCloudPlatform, accessory: Pla
  */
 export default abstract class Device {
 	constructor(public platform: AqaraCloudPlatform, public accessory: PlatformAccessory<AqaraAccessory>) {
+		this.platform.log.info(`Initializing device<${this.accessory.context.deviceName}>...`)
 		this.init().then(() => {
+			this.platform.log.info(`Device<${this.accessory.context.deviceName}> initialized!`)
 			setInterval(() => {
 				this.pull().then(() => {
 					console.info(`Refresh state of device<${this.accessory.context.did}>`);
@@ -50,10 +63,22 @@ export default abstract class Device {
 		});
 	}
 
-	async init() {
-		// this.registerAccessoryInformation();
-		this.registerServices();
+	/**
+	 * You should not override this method or at least call `super.init()` if you insist
+	 * @protected
+	 */
+	protected async init() {
+		try {
+			await this.initState();
+			this.registerAccessoryInformation();
+			this.registerServices();
+		} catch (e) {
+			this.platform.log.error('Error captured while initializing device');
+			console.error(e);
+		}
 	}
+
+	abstract initState(): Promise<void>;
 
 	/**
 	 * Alias to api.hap.Characteristic
@@ -69,10 +94,6 @@ export default abstract class Device {
 		return this.platform.Service;
 	}
 
-	protected get now() {
-		return Date.now();
-	}
-
 	get manufacturer(): string {
 		return 'Aqara';
 	}
@@ -85,32 +106,25 @@ export default abstract class Device {
 		return this.accessory.context.did;
 	}
 
+	get firmwareVersion(): string {
+		return this.accessory.context.firmwareVersion || 'unknown';
+	}
+
 	public resoucesValue: ResourcesValue = [];
 
-	/**
-	 * Check requested resource is supported by the plugin
-	 *
-	 * @param      {string[]}  resourcesId  The resources identifier
-	 */
-	// private checkIfSupported(resourcesId: string[]) {
-	// 	const unsupportedResources = difference(resourcesId, this.availableResourcesID);
-	// 	if (unsupportedResources.length > 0) {
-	// 		throw new Error(
-	// 			`unsupported resources specified: ${unsupportedResources.join(', ')}`
-	// 		);
-	// 	}
-	// }
 
 
-	// private registerAccessoryInformation() {
-	// 	this.accessory.getService(this.Service.AccessoryInformation)?.setCharacteristic(
-	// 		this.Characteristic.Manufacturer, this.getManufacturer()
-	// 	)?.setCharacteristic(
-	// 		this.Characteristic.Model, this.getModel()
-	// 	)?.setCharacteristic(
-	// 		this.Characteristic.SerialNumber, this.getSerialNumber()
-	// 	)
-	// }
+	private registerAccessoryInformation() {
+		this.accessory.getService(this.Service.AccessoryInformation)?.setCharacteristic(
+			this.Characteristic.Manufacturer, this.manufacturer
+		)?.setCharacteristic(
+			this.Characteristic.Model, this.model
+		)?.setCharacteristic(
+			this.Characteristic.SerialNumber, this.serialNumber
+		)?.setCharacteristic(
+			this.Characteristic.FirmwareRevision, this.firmwareVersion
+		)
+	}
 
 	/**
 	 * This method will be called to register this device in homebridge
@@ -118,7 +132,7 @@ export default abstract class Device {
 	private registerServices() {
 		const abilities = this.abilities;
 		abilities.forEach((ability) => {
-			const service = this.createService(ability.service);
+			const service = this.createService(ability.service, ability.serviceName, ability.serviceSubType);
 			ability.characteristics.forEach((characteristic) => {
 				service != undefined && this.createCharacteristic(service, characteristic);
 			});
@@ -130,8 +144,13 @@ export default abstract class Device {
 	 *
 	 * @param      {WithUUID<typeof Service>}  service  The service
 	 */
-	private createService(service: WithUUID<typeof Service>) {
-		return this.accessory.getService(service);
+	private createService(service: WithUUID<typeof Service>, serviceName?: string, serviceSubStype?: string) {
+		let instance = this.accessory.getService(serviceName ? serviceName : service);
+		if (instance == undefined) {
+			instance = this.accessory.addService(service, serviceName, serviceSubStype);
+		}
+		this.platform.log.info(instance ? `Created new service: ${service.name}` : `Can not create service: ${service.name}`);
+		return instance;
 	}
 
 	/**
@@ -142,25 +161,26 @@ export default abstract class Device {
 	 */
 	private createCharacteristic(service: Service, options: CharacteristicAndResourceMapping) {
 		const characteristic = service.getCharacteristic(options.characteristic)
-
 		// Bind the getter to characteristic
 		if (typeof options.resource.getter == "function") {
 			characteristic.onGet(async (context, connection?: HAPConnection) => {
-				let value = await this.readResourceValue(options.resource.id);
-				// @ts-ignore
-				return options.resource.getter(
-					value, context, connection, options.resource.id
-				);
+				return options.resource.getter!({
+					context: context,
+					connection: connection,
+					configuration: options,
+				})
 			})
 		}
 
 		// Bind the setter to characteristic
 		if (typeof options.resource.setter == 'function') {
 			characteristic.onSet(async (value: CharacteristicValue, context: any, connection?: HAPConnection) => {
-				// @ts-ignore
-				const [res1, res2] = await options.resource.setter(value, context, connection, options.resource.id);
-				await this.setResource(options.resource.id, res2)
-				return res1;
+				return options.resource.setter!({
+					value: value,
+					context,
+					connection,
+					configuration: options
+				});
 			});
 		}
 	}
@@ -171,19 +191,7 @@ export default abstract class Device {
 	 * @type       {ResourceMapping[]}
 	 */
 	get abilities(): ResourceMapping[] {
-		return [
-		];
-	}
-
-	/**
-	 * Gets the service and characteristics. You may override this method to create new device type.
-	 *
-	 * @return     {[Service, Characteristic[]][]}  The service and characteristics.
-	 */
-	getServiceAndCharacteristics(): [typeof Service, typeof Characteristic[]][] {
-		return [
-			[this.Service.AccessoryInformation, [this.Characteristic.Identifier]]
-		];
+		return [];
 	}
 
 	/**
@@ -192,14 +200,15 @@ export default abstract class Device {
 	 * @type       {string[]}
 	 */
 	get availableResourcesID(): string[] {
-		const resourcesId = this.abilities.map<string[]>((service) => {
-			return service.characteristics.map((characteristic) => characteristic.resource.id);
-		}).reduce((res, resources) => {
-			res.push(...resources);
-			return res;
-		}, []);
-
-		return uniq(resourcesId);
+		let resources = new Set<string>();
+		for (let service of this.abilities) {
+			for (let characteristic of service.characteristics) {
+				if (characteristic.resource.id) {
+					resources.add(characteristic.resource.id);
+				}
+			}
+		}
+		return Array.from(resources.values());
 	}
 
 
@@ -207,21 +216,27 @@ export default abstract class Device {
 	 * Pulls the resources value from aqara cloud and cache it before next pull.
 	 */
 	private async pull(){
-		const response = await this.platform.aqaraApi.request<Intent['query']['resource']['value']['response']>("query.resource.value", {
-			"resources": [
-				{
-					"subjectId": "virtual2.11774113824794",
-					"resourceIds": this.availableResourcesID
-				}
-			]
-		});
-		if (Array.isArray(response.data.result)) {
-			this.resoucesValue = response.data.result;
+		try {
+			const response = await this.platform.aqaraApi.request<Intent['query']['resource']['value']['response']>("query.resource.value", {
+				"resources": [
+					{
+						"subjectId": this.accessory.context.did,
+						"resourceIds": this.availableResourcesID
+					}
+				]
+			});
+
+			if (Array.isArray(response.data.result)) {
+				this.resoucesValue = response.data.result;
+			}
+		} catch (e) {
+			this.platform.log.error('Error captured on pull resource data from cloud');
+			console.error(e);
 		}
 	}
 
-	findResource(resourceId: string) {
-		return this.resoucesValue.find((resource) => resource.resourceId = resourceId);
+	private findResource(resourceId: string) {
+		return this.resoucesValue.find((resource) => resource.resourceId == resourceId);
 	}
 
 	/**
@@ -238,9 +253,7 @@ export default abstract class Device {
 		let resource = this.findResource(resourceId);
 
 		if (resource != undefined) {
-			if (this.now - resource?.timeStamp < 3000) {
-				return resource?.value;
-			}
+			return resource?.value;
 		}
 
 		return null;
@@ -262,6 +275,7 @@ export default abstract class Device {
 				}
 			]
 		}]);
+
 		await this.pull();
 	}
 }
