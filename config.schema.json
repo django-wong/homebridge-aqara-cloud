@@ -1,0 +1,16 @@
+{
+  "pluginAlias": "Aqara Cloud",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Access Token",
+        "type": "string",
+        "required": true,
+        "default": "You can get the access token by register as an individual developer on Aqara Cloud Platform and follow the instraction there."
+      }
+    }
+  }
+}
