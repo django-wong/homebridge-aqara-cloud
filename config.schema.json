@@ -5,11 +5,29 @@
   "schema": {
     "type": "object",
     "properties": {
-      "name": {
+      "accessToken": {
         "title": "Access Token",
         "type": "string",
         "required": true,
-        "default": "You can get the access token by register as an individual developer on Aqara Cloud Platform and follow the instraction there."
+        "default": "You get this by calling the authentication api"
+      },
+      "appId":  {
+        "title": "APP ID",
+        "type": "string",
+        "require": true,
+        "default": "You can get these from Aqara Cloud"
+      },
+      "keyId":  {
+        "title": "APP Key ID",
+        "type": "string",
+        "require": true,
+        "default": ""
+      },
+      "appKey": {
+        "title": "APP Key Secret",
+        "type": "string",
+        "require": true,
+        "default": ""
       }
     }
   }
