@@ -1,7 +1,7 @@
 {
   "private": true,
   "displayName": "Aqara Cloud",
-  "name": "homebridge-aqara-cloud",
+  "name": "@django-wong/homebridge-aqara-cloud",
   "version": "0.0.1",
   "description": "A homebridge plugin to interacts with your Aqara devices over the cloud.",
   "license": "Apache-2.0",
