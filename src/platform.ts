@@ -1,9 +1,11 @@
-import { API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, UnknownContext } from "homebridge";
+import { API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig } from "homebridge";
 import Api from "./api";
 import Device, { AqaraAccessory, SubClassOfDevice } from "./device";
-import AirConditionerController from "./devices/air_conditioner_controller";
+// import AirConditionerController from "./devices/air_conditioner_controller";
 import IRDevice from "./devices/ir_device";
 import StatefullIRAC from './devices/statufull_ir_ac';
+import IRTV from './devices/ir_tv';
+import IRFan from "./devices/ir_fan";
 
 
 export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
@@ -14,17 +16,24 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
      * Device category and model mapping. Use to find the proper device driver when creating accessories
      */
     static readonly DeviceCategories: [SubClassOfDevice, string[]][] = [
-        // [AirConditionerController, ['lumi.aircondition.acn05']],
         [
-            IRDevice, [
-                'virtual.ir.fan',
-                'virtual.ir.tv',
-                'virtual.ir.default'
+            IRTV, [
+                'virtual.ir.tv'
             ]
         ],
         [
             StatefullIRAC, [
                 'virtual.ir.ac'
+            ]
+        ],
+        [
+            IRFan, [
+                'virtual.ir.fan'
+            ]
+        ],
+        [
+            IRDevice, [
+                'virtual.ir.default'
             ]
         ]
     ]
@@ -43,8 +52,6 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
 
     /**
      * Alias to api.hap.Characteristic
-     *
-     * @type       {Characteristic}
      */
     get Characteristic() {
         return this.api.hap.Characteristic;
@@ -66,11 +73,7 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
      * @param config
      * @param api
      */
-    constructor(
-        public readonly log: Logger,
-        public readonly config: PlatformConfig,
-        public readonly api: API
-    ) {
+    constructor(public readonly log: Logger, public readonly config: PlatformConfig, public readonly api: API) {
         this.api.on('didFinishLaunching', () => {
             setInterval(() => {
                 this.discoverDevices();
@@ -129,7 +132,7 @@ export default class AqaraCloudPlatform implements DynamicPlatformPlugin {
         }).map((item) => {
             // Register the device if supported
             const uuid = this.api.hap.uuid.generate(item.did);
-            let accessory = new this.api.platformAccessory<AqaraAccessory>(item.deviceName, uuid);
+            const accessory = new this.api.platformAccessory<AqaraAccessory>(item.deviceName, uuid);
             accessory.context = item;
             return this.registerDevice(accessory);
 

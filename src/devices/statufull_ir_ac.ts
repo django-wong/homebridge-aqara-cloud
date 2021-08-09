@@ -97,12 +97,14 @@ export default class StatefullIRAC extends IRDevice {
     }
 
     private async write() {
-        this.platform.log.info(`Press key<${this.acState?.toString}>`);
-        await this.platform.aqaraApi.request<Intent['write']['ir']['click']>(
-            'write.ir.click', {
-                did: this.accessory.context.did,
-                acKey: this.acState?.toString()
-            }
-        );
+        const key = this.acState?.toString();
+        if (key) {
+            this.platform.log.info(`Press key<${key}>`);
+            await this.platform.aqaraApi.request<Intent['write']['ir']['click']>(
+                'write.ir.click', {
+                    did: this.accessory.context.did, acKey: key
+                }
+            );
+        }
     }
 }

@@ -101,11 +101,11 @@ export default class Api {
 
     protected nonceNumber = 1;
 
-    get nonce() {
+    get nonce(): string {
         return randomString(10);
     }
 
-    get timestamp() {
+    get timestamp(): number {
         return Math.round(Date.now());
     }
 

@@ -1,3 +1,4 @@
+import EventEmitter from 'events';
 import { Characteristic, CharacteristicChange, CharacteristicValue, Nullable, PlatformAccessory, Service, WithUUID } from 'homebridge';
 
 import { uniq } from 'lodash';
@@ -45,26 +46,24 @@ export type ResourceMapping = {
 type HAPConnection = CharacteristicChange['originator'];
 
 export type AqaraAccessory = Intent['query']['device']['info']['response']['data'][0];
-// export type ResourcesValue = Intent['query']['resource']['value']['response'];
 
 export type SubClassOfDevice = new (platform: AqaraCloudPlatform, accessory: PlatformAccessory<AqaraAccessory>) => Device
 
-export type State<T extends PlainObject = {}> = {
-
-} & T
+export type State<T extends PlainObject = Record<string, unknown>> = Record<string, unknown> & T
 
 /**
  * The abstraction of a device. You should use other type of devices instead of this one.
  *
  * @class      Device (name)
  */
-export default abstract class Device {
+export default abstract class Device extends EventEmitter {
     public resource = new ResourcesValue([])
 
     public state: State = {
     }
 
     constructor(public platform: AqaraCloudPlatform, public accessory: PlatformAccessory<AqaraAccessory>) {
+        super();
         this.platform.log.info(`Initializing device<${this.accessory.context.deviceName}>...`)
         this.init().then(() => {
             this.platform.log.info(`Device<${this.accessory.context.deviceName}> initialized!`)
@@ -224,9 +223,9 @@ export default abstract class Device {
      * @type       {string[]}
      */
     get availableResourcesID(): string[] {
-        let resources = new Set<string>();
-        for (let service of this.abilities) {
-            for (let characteristic of service.characteristics) {
+        const resources = new Set<string>();
+        for (const service of this.abilities) {
+            for (const characteristic of service.characteristics) {
                 if (characteristic.resource.id) {
                     resources.add(characteristic.resource.id);
                 }

@@ -1,6 +1,6 @@
 type IntentType = {
-    request: any,
-    response: any
+    request: Record<string, any>,
+    response: Record<string, any>
 }
 
 interface Intent {
@@ -125,6 +125,4 @@ interface Intent {
 }
 
 
-interface PlainObject {
-    [key: string]: any
-}
+type PlainObject = Record<string, unknown>

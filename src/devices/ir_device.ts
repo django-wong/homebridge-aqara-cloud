@@ -15,6 +15,10 @@ export default class IRDevice extends Device {
         this.irInfo = response.data.result;
     }
 
+    get manufacturer() {
+        return this.irInfo?.brandName ?? super.manufacturer;
+    }
+
     protected async fetchRemoterKeys() {
         const response = await this.platform.aqaraApi.request<Intent['query']['ir']['keys']>(
             'query.ir.keys', {
@@ -31,12 +35,7 @@ export default class IRDevice extends Device {
     async initState(): Promise<void> {
         try {
             await this.readIrInfo();
-
-            // if (this.irInfo?.type == 2) {
-                // await this.readControllerInfo();
-            // } else {
-                await this.fetchRemoterKeys();
-            // }
+            await this.fetchRemoterKeys();
         } catch (e) {
             this.platform.log.error('Error captured on init state');
             console.error(e);
@@ -54,19 +53,28 @@ export default class IRDevice extends Device {
                         characteristic: this.Characteristic.On,
                         resource: {
                             getter: () => false,
-                            setter: () => this.pressKey(key)
+                            setter: async () => {
+                                await this.pressKey(key);
+                                return false;
+                            }
                         }
                     },
                     {
                         characteristic: this.Characteristic.Name,
                         resource: {
-                            getter: () => key.keyName,
-                            setter: () => this.pressKey(key)
+                            getter: () => key.keyName
                         }
                     }
                 ]
             };
         });
+    }
+
+    async pressKeyByName(name: string) {
+        const key = this.findKeyByName(name);
+        if (key) {
+            return await this.pressKey(key);
+        }
     }
 
     async pressKey(key: Key) {
@@ -78,6 +86,11 @@ export default class IRDevice extends Device {
                 keyId: key.keyId,
             }
         );
-        return false;
+    }
+
+    findKeyByName(name: string): Key | undefined{
+        return this.keys.find((item) => {
+            return item.keyName == name;
+        });
     }
 }

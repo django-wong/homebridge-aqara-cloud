@@ -1,0 +1,11 @@
+docs/
+.idea/
+.src/
+tests/
+.env
+jest.config.js
+nodemon.json
+src/
+.editorconfig
+tsconfig.json
+.eslintrc.json
