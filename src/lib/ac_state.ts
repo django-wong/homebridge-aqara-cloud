@@ -184,7 +184,6 @@ export default class AcState {
     setFanSpeed(value: CharacteristicValue) {
         switch (true) {
         case value == 0:
-            this.power = Power.Off;
             this.windSpeed = WindSpeed.Auto;
             break;
         case value <= 30:
