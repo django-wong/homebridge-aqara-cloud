@@ -1,10 +1,16 @@
 import { ResourceMapping } from "../device";
 import IRDevice from "./ir_device";
+import { throttle } from 'lodash';
+import { Characteristic } from 'homebridge';
+
+
 
 export default class IRFan extends IRDevice {
 
     public active = this.Characteristic.Active.INACTIVE;
     public swing = this.Characteristic.SwingMode.SWING_DISABLED;
+
+    protected swingModeCharacteristic?: Characteristic;
 
     get abilities(): ResourceMapping[] {
         return [
@@ -15,13 +21,17 @@ export default class IRFan extends IRDevice {
                     {
                         characteristic: this.Characteristic.Active,
                         resource: {
-                            getter: () => {
-                                return this.active;
-                            },
+                            getter: () => this.active,
                             setter: async (options) => {
                                 if (this.active != options.value) {
                                     this.active = options.value as number;
                                     await this.pressKeyByName('POWER');
+                                    if (!this.active) {
+                                        this.swing = this.Characteristic.SwingMode.SWING_DISABLED;
+                                        this.swingModeCharacteristic?.updateValue(
+                                            this.swing
+                                        )
+                                    }
                                 }
                                 return this.active;
                             }
@@ -32,7 +42,9 @@ export default class IRFan extends IRDevice {
                         characteristic: this.Characteristic.CurrentFanState,
                         resource: {
                             getter: () => {
-                                return this.active ? this.Characteristic.CurrentFanState.BLOWING_AIR : this.Characteristic.CurrentFanState.IDLE;
+                                return this.active
+                                ? this.Characteristic.CurrentFanState.BLOWING_AIR
+                                : this.Characteristic.CurrentFanState.INACTIVE;
                             }
                         }
                     },
@@ -46,6 +58,18 @@ export default class IRFan extends IRDevice {
                                 this.swing = options.value as number;
                                 await this.pressKeyByName('SWING')
                                 return this.swing;
+                            },
+                        },
+                        onCreate: (characteristic) => this.swingModeCharacteristic = characteristic
+                    },
+
+                    {
+                        characteristic: this.Characteristic.RotationSpeed,
+                        resource: {
+                            getter: () => 50,
+                            setter: (options) => {
+                                this.changeFanSpeed();
+                                return options.value;
                             }
                         }
                     }
@@ -53,4 +77,6 @@ export default class IRFan extends IRDevice {
             }
         ];
     }
+
+    private changeFanSpeed = throttle(() => this.pressKeyByName('FAN_SPEED'), 500);
 }

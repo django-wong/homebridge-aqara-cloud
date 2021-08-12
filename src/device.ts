@@ -1,8 +1,6 @@
 import EventEmitter from 'events';
 import { Characteristic, CharacteristicChange, CharacteristicValue, Nullable, PlatformAccessory, Service, WithUUID } from 'homebridge';
 
-import { uniq } from 'lodash';
-
 import ResourcesValue from "./lib/resource_state";
 
 
@@ -12,7 +10,7 @@ type PromiseOr<T> = Promise<T> | T;
 
 type CharacteristicGetResult = PromiseOr<Nullable<CharacteristicValue>>
 
-type CharacteristicSetResult = PromiseOr<Nullable<CharacteristicValue>>
+type CharacteristicSetResult = PromiseOr<Nullable<CharacteristicValue> | void>
 
 export type CharacteristicValueGetterOptions = {
     configuration: CharacteristicAndResourceMapping,
@@ -30,17 +28,19 @@ type CharacteristicValueSetter = (options: CharacteristicValueSetterOptions) => 
 export type CharacteristicAndResourceMapping = {
     characteristic: WithUUID<{new (): Characteristic}>,
     resource: {
-        id?: string,
+        id?: string, // The aqara resource ID
         getter?: CharacteristicValueGetter
         setter?: CharacteristicValueSetter
-    }
+    },
+    onCreate?: (characteristic: Characteristic) => void
 }
 
 export type ResourceMapping = {
     serviceSubType?: string
     serviceName?: string
     service: WithUUID<typeof Service>,
-    characteristics: CharacteristicAndResourceMapping[]
+    characteristics: CharacteristicAndResourceMapping[],
+    onCreate?: (service: Service) => void
 }
 
 type HAPConnection = CharacteristicChange['originator'];
@@ -59,10 +59,11 @@ export type State<T extends PlainObject = Record<string, unknown>> = Record<stri
 export default abstract class Device extends EventEmitter {
     public resource = new ResourcesValue([])
 
-    public state: State = {
-    }
+    public state: State = {}
 
-    constructor(public platform: AqaraCloudPlatform, public accessory: PlatformAccessory<AqaraAccessory>) {
+    protected accessoryInformationService?: Service;
+
+    constructor(public platform: AqaraCloudPlatform, public accessory: PlatformAccessory<AqaraAccessory & Record<string, any>>) {
         super();
         this.platform.log.info(`Initializing device<${this.accessory.context.deviceName}>...`)
         this.init().then(() => {
@@ -90,7 +91,7 @@ export default abstract class Device extends EventEmitter {
         }
     }
 
-    abstract initState(): Promise<void>;
+    abstract initState(): PromiseOr<void>;
 
     /**
      * Alias to api.hap.Characteristic
@@ -124,7 +125,7 @@ export default abstract class Device extends EventEmitter {
 
 
     private registerAccessoryInformation() {
-        this.accessory.getService(
+        this.accessoryInformationService = this.accessory.getService(
             this.Service.AccessoryInformation
         )?.setCharacteristic(
             this.Characteristic.Manufacturer, this.manufacturer
@@ -146,9 +147,12 @@ export default abstract class Device extends EventEmitter {
         const abilities = this.abilities;
         abilities.forEach((ability) => {
             const service = this.createService(ability.service, ability.serviceName, ability.serviceSubType);
-            ability.characteristics.forEach((characteristic) => {
-                service != undefined && this.createCharacteristic(service, characteristic);
-            });
+            if (service) {
+                ability.onCreate && ability.onCreate(service);
+                ability.characteristics.forEach((characteristic) => {
+                    this.createCharacteristic(service, characteristic);
+                });
+            }
         });
     }
 
@@ -176,6 +180,9 @@ export default abstract class Device extends EventEmitter {
      */
     private createCharacteristic(service: Service, options: CharacteristicAndResourceMapping) {
         const characteristic = service.getCharacteristic(options.characteristic)
+
+        options.onCreate && options.onCreate(characteristic);
+
         // Bind the getter to characteristic
         if (typeof options.resource.getter == "function") {
             characteristic.onGet(async (context, connection?: HAPConnection) => {
@@ -187,11 +194,12 @@ export default abstract class Device extends EventEmitter {
                         // Unable to find resource value from cache
                     }
                 }
-                return options.resource.getter!({
-                    context: context,
-                    connection: connection,
-                    configuration: options,
-                }, cachedValue)
+
+                const arg1 = {
+                    context, connection, configuration: options,
+                };
+
+                return options.resource.getter!(arg1, cachedValue)
             })
         }
 
