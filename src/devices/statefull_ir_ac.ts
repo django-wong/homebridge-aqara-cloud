@@ -125,7 +125,7 @@ export default class StatefullIRAC extends IRDevice {
                         characteristic: this.Characteristic.Active,
                         resource: {
                             getter: () => {
-                                return this.acState.power ? this.Characteristic.Active.ACTIVE : this.Characteristic.Active.INACTIVE;
+                                return this.acState.power == 0 ? this.Characteristic.Active.ACTIVE : this.Characteristic.Active.INACTIVE;
                             }
                         }
                     },
@@ -151,6 +151,14 @@ export default class StatefullIRAC extends IRDevice {
                                 this.acState.setFanSpeed(options.value);
                                 this.write();
                             }, 300)
+                        }
+                    },
+                    {
+                        characteristic: this.Characteristic.CurrentFanState,
+                        resource: {
+                            getter: () => {
+                                return this.acState.getCurrentFanState()
+                            }
                         }
                     }
                 ]

@@ -1,19 +1,19 @@
 import { CharacteristicValue, Nullable } from "homebridge";
 import Device from "../device";
 
-enum Mode {
+export enum Mode {
     Cooling = 0, Heating = 1, Auto = 2, Other = 3
 }
 
-enum Power {
+export enum Power {
     On = 0, Off = 1
 }
 
-enum WindSpeed {
+export enum WindSpeed {
     Auto = 0, Low = 1, Medium = 2, High = 3
 }
 
-enum WindDirection {
+export enum WindDirection {
     Swing = 0, Fixed = 1
 }
 
@@ -200,10 +200,18 @@ export default class AcState {
     }
 
     getSwingMode() {
-        return this.windDirection == WindDirection.Swing ? this.C.SwingMode.SWING_ENABLED : this.C.SwingMode.SWING_DISABLED;
+        return this.windDirection == WindDirection.Swing
+            ? this.C.SwingMode.SWING_ENABLED
+            : this.C.SwingMode.SWING_DISABLED;
     }
 
     setSwingMode(value: CharacteristicValue) {
         this.windDirection = value == 0 ? WindDirection.Swing : WindDirection.Fixed;
+    }
+
+    getCurrentFanState() {
+        return this.power == Power.On
+            ? this.C.CurrentFanState.BLOWING_AIR
+            : this.C.CurrentFanState.INACTIVE;
     }
 }
