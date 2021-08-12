@@ -21,7 +21,7 @@ export default class AcState {
     // The raw data of the AC state
     private data = {};
 
-    constructor(private state: string, private device: Device) {
+    constructor(public state: string, private device: Device) {
         state.split('_').forEach((part) => {
             const key = part.substr(0, 1); const value = parseInt(part.substr(1));
             this.data[key] = value;
@@ -161,7 +161,6 @@ export default class AcState {
     }
 
     setTargetTemperature(value: CharacteristicValue) {
-        console.info(`Set target temperature <${value}>`);
         if (Number.isFinite(value) && (value <= 30 || value >= 16)) {
             this.temperature = Math.ceil(value as number);
         }
@@ -170,7 +169,7 @@ export default class AcState {
     getFanSpeed() {
         switch (this.windSpeed) {
         case WindSpeed.Auto:
-            return 50;
+            return 30;
         case WindSpeed.Low:
             return 30
         case WindSpeed.Medium:
@@ -178,12 +177,11 @@ export default class AcState {
         case WindSpeed.High:
             return 100;
         default:
-            return 50;
+            return 30;
         }
     }
 
     setFanSpeed(value: CharacteristicValue) {
-        console.info(`Set fan speed <${value}>`);
         switch (true) {
         case value == 0:
             this.power = Power.Off;
@@ -192,20 +190,20 @@ export default class AcState {
         case value <= 30:
             this.windSpeed = WindSpeed.Low;
             break;
-        case value >= 30 && value <= 60:
+        case value > 30 && value <= 60:
             this.windSpeed = WindSpeed.Medium;
             break;
-        case value >= 60:
+        case value > 60:
             this.windSpeed = WindSpeed.High;
             break;
         }
     }
 
     getSwingMode() {
-        return this.windDirection > 0 ? this.C.SwingMode.SWING_ENABLED : this.C.SwingMode.SWING_DISABLED;
+        return this.windDirection == WindDirection.Swing ? this.C.SwingMode.SWING_ENABLED : this.C.SwingMode.SWING_DISABLED;
     }
 
     setSwingMode(value: CharacteristicValue) {
-        this.windDirection = value > 0 ? WindDirection.Fixed : WindDirection.Swing;
+        this.windDirection = value == 0 ? WindDirection.Swing : WindDirection.Fixed;
     }
 }

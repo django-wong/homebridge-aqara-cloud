@@ -8,9 +8,9 @@ import AqaraCloudPlatform from './platform';
 
 type PromiseOr<T> = Promise<T> | T;
 
-type CharacteristicGetResult = PromiseOr<Nullable<CharacteristicValue>>
+export type CharacteristicGetResult = PromiseOr<Nullable<CharacteristicValue>>
 
-type CharacteristicSetResult = PromiseOr<Nullable<CharacteristicValue> | void>
+export type CharacteristicSetResult = PromiseOr<Nullable<CharacteristicValue> | void>
 
 export type CharacteristicValueGetterOptions = {
     configuration: CharacteristicAndResourceMapping,
@@ -22,8 +22,10 @@ export type CharacteristicValueSetterOptions = {
     value: CharacteristicValue
 } & CharacteristicValueGetterOptions
 
-type CharacteristicValueGetter = (options: CharacteristicValueGetterOptions, resourceValue?: string) => CharacteristicGetResult
-type CharacteristicValueSetter = (options: CharacteristicValueSetterOptions) => CharacteristicSetResult
+export type ResourceValue = string | undefined;
+
+export type CharacteristicValueGetter = (options: CharacteristicValueGetterOptions, resourceValue: ResourceValue) => CharacteristicGetResult
+export type CharacteristicValueSetter = (options: CharacteristicValueSetterOptions) => CharacteristicSetResult
 
 export type CharacteristicAndResourceMapping = {
     characteristic: WithUUID<{new (): Characteristic}>,
@@ -63,14 +65,16 @@ export default abstract class Device extends EventEmitter {
 
     protected accessoryInformationService?: Service;
 
+    protected pullingTimer?: NodeJS.Timer;
+
     constructor(public platform: AqaraCloudPlatform, public accessory: PlatformAccessory<AqaraAccessory & Record<string, any>>) {
         super();
         this.platform.log.info(`Initializing device<${this.accessory.context.deviceName}>...`)
         this.init().then(() => {
             this.platform.log.info(`Device<${this.accessory.context.deviceName}> initialized!`)
-            setInterval(() => {
+            this.pullingTimer = setInterval(() => {
                 this.pull().then(() => {
-                    console.info(`Refresh state of device<${this.accessory.context.did}>`);
+                    this.platform.log.debug(`Refreshed state of device<${this.accessory.context.did}>`);
                 })
             }, 30000);
         });
@@ -92,6 +96,12 @@ export default abstract class Device extends EventEmitter {
     }
 
     abstract initState(): PromiseOr<void>;
+
+    dispose() {
+        if (this.pullingTimer) {
+            clearInterval(this.pullingTimer);
+        }
+    }
 
     /**
      * Alias to api.hap.Characteristic
@@ -127,16 +137,26 @@ export default abstract class Device extends EventEmitter {
     private registerAccessoryInformation() {
         this.accessoryInformationService = this.accessory.getService(
             this.Service.AccessoryInformation
-        )?.setCharacteristic(
-            this.Characteristic.Manufacturer, this.manufacturer
-        )?.setCharacteristic(
-            this.Characteristic.Model, this.model
-        )?.setCharacteristic(
-            this.Characteristic.SerialNumber, this.serialNumber
-        )?.setCharacteristic(
-            this.Characteristic.FirmwareRevision, this.firmwareVersion
-        )?.setCharacteristic(
-            this.Characteristic.Name, this.accessory.context.deviceName
+        )
+        ?.setCharacteristic(
+            this.Characteristic.Manufacturer,
+            this.manufacturer
+        )
+        ?.setCharacteristic(
+            this.Characteristic.Model,
+            this.model
+        )
+        ?.setCharacteristic(
+            this.Characteristic.SerialNumber,
+            this.serialNumber
+        )
+        ?.setCharacteristic(
+            this.Characteristic.FirmwareRevision,
+            this.firmwareVersion
+        )
+        ?.setCharacteristic(
+            this.Characteristic.Name,
+            this.accessory.context.deviceName
         )
     }
 
@@ -166,9 +186,13 @@ export default abstract class Device extends EventEmitter {
     private createService(service: WithUUID<typeof Service>, serviceName?: string, serviceSubStype?: string) {
         let instance = this.accessory.getService(serviceName ? serviceName : service);
         if (instance == undefined) {
-            instance = this.accessory.addService(service, serviceName, serviceSubStype);
+            instance = this.accessory.addService(
+                service, serviceName, serviceSubStype
+            );
         }
-        this.platform.log.info(instance ? `Created new service: ${service.name}` : `Can not create service: ${service.name}`);
+        this.platform.log.info(
+            instance ? `Created new service: ${service.name}` : `Can not create service: ${service.name}`
+        );
         return instance;
     }
 
@@ -186,10 +210,10 @@ export default abstract class Device extends EventEmitter {
         // Bind the getter to characteristic
         if (typeof options.resource.getter == "function") {
             characteristic.onGet(async (context, connection?: HAPConnection) => {
-                let cachedValue;
+                let cachedValue: ResourceValue;
                 if (options.resource.id) {
                     try {
-                        cachedValue = this.resource.read(options.resource.id ?? '');
+                        cachedValue = this.resource.read(options.resource.id);
                     } catch (e) {
                         // Unable to find resource value from cache
                     }
@@ -282,15 +306,16 @@ export default abstract class Device extends EventEmitter {
      */
     async setResource(resourceId: string, value: string) {
         await this.platform.aqaraApi.request<Intent['write']['resource']['device']>(
-            'write.resource.device', [{
-            subjectId: this.accessory.context.did,
-            resources: [
+            'write.resource.device', [
                 {
-                    resourceId, value
+                    subjectId: this.accessory.context.did,
+                    resources: [
+                        {
+                            resourceId, value
+                        }
+                    ]
                 }
             ]
-        }]);
-
-        await this.pull();
+        );
     }
 }

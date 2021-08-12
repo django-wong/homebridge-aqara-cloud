@@ -135,9 +135,7 @@ export default class Api {
             headers: this.createHeader(),
             method: 'post',
             data: {
-                intent: intent,
-                data,
-                ...options
+                intent: intent, data, ...options
             }
         })
     }

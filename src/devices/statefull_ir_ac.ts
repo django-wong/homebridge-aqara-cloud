@@ -2,38 +2,55 @@ import { ResourceMapping } from "../device";
 import IRDevice from "./ir_device";
 import AcState from '../lib/ac_state';
 import { Characteristic } from "homebridge";
+import { throttle } from "lodash";
 
 export default class StatefullIRAC extends IRDevice {
     protected acState!: AcState;
 
-    async fetchRemoterKeys() {
+    async fetchAcStatus() {
         const response = await this.platform.aqaraApi.request<Intent['query']['ir']['acState']>(
             'query.ir.acState', {
                 did: this.accessory.context.did
             }
         )
-
         if (response.data) {
-            if (response.data.result.acState) {
-                this.acState = new AcState(response.data.result.acState, this);
-                return;
-            }
+            this.acState = new AcState(
+                response.data.result.acState ?? "", this
+            );
         }
+    }
 
-        throw new Error('can not get ac state from remote');
+    async initAcState() {
+        try {
+            await this.fetchAcStatus();
+        } catch (e) {
+            this.platform.log.error('fetch AC state failed');
+            console.info(e && e.toString()); throw e;
+        }
     }
 
     async initState() {
         await super.initState();
-        if (this.irInfo?.type == 2) {
-            this.monitorAcState();
-        } else {
-            throw new Error(`Invalid ir device type ${this.irInfo?.type}`);
+        if (this.irInfo?.type != 2) {
+            throw new Error(
+                `Invalid ir device type ${this.irInfo?.type}`
+            );
         }
+        await this.initAcState();
+        this.monitorAcState();
     }
 
+    protected acStateTimer?: NodeJS.Timer;
+
     private monitorAcState() {
-        setInterval(() => this.fetchRemoterKeys(), 30 * 1000)
+        this.acStateTimer = setInterval(() => this.fetchAcStatus(), 30 * 1000)
+    }
+
+    dispose() {
+        if (this.acStateTimer) {
+            clearInterval(this.acStateTimer);
+        }
+        super.dispose();
     }
 
     protected currentHeatingCoolingStateCharacteristic?: Characteristic;
@@ -47,7 +64,6 @@ export default class StatefullIRAC extends IRDevice {
                         characteristic: this.Characteristic.CurrentHeatingCoolingState,
                         resource: {
                             getter: () => {
-                                this.platform.log.info('Get current heating cooling state...');
                                 return this.acState.getCurrentHeatingCoolingState() ?? null;
                             },
                         },
@@ -131,10 +147,10 @@ export default class StatefullIRAC extends IRDevice {
                             getter: () => {
                                 return this.acState.getFanSpeed();
                             },
-                            setter: (options) => {
+                            setter: throttle((options) => {
                                 this.acState.setFanSpeed(options.value);
                                 this.write();
-                            }
+                            }, 300)
                         }
                     }
                 ]

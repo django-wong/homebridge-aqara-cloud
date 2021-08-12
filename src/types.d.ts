@@ -82,7 +82,7 @@ interface Intent {
                     "did": string
                 },
                 response: {
-                    "acState": string
+                    "acState"?: string
                 }
             }
         }

@@ -42,6 +42,10 @@ export default class IRDevice extends Device {
         }
     }
 
+    dispose() {
+        super.dispose();
+    }
+
     get abilities(): ResourceMapping[] {
         return this.keys.map((key) => {
             return {
