@@ -1,4 +1,4 @@
-import { ResourceMapping } from "../device";
+import { CharacteristicValueSetterOptions, ResourceMapping } from "../device";
 import IRDevice from "./ir_device";
 import AcState from '../lib/ac_state';
 import { Characteristic } from "homebridge";
@@ -58,30 +58,42 @@ export default class StatefullIRAC extends IRDevice {
     get abilities(): ResourceMapping[] {
         return [
             {
-                service: this.Service.Thermostat,
+                service: this.Service.HeaterCooler,
                 characteristics: [
                     {
-                        characteristic: this.Characteristic.CurrentHeatingCoolingState,
+                        characteristic: this.Characteristic.Active,
                         resource: {
-                            getter: () => {
-                                return this.acState.getCurrentHeatingCoolingState() ?? null;
-                            },
-                        },
-                        onCreate: (characteristic) => this.currentHeatingCoolingStateCharacteristic = characteristic
+                            getter: () => this.acState.getActive(),
+                            setter: async (options) => {
+                                this.acState.setActive(options.value);
+                                await this.write();
+                            }
+                        }
                     },
                     {
-                        characteristic: this.Characteristic.TargetHeatingCoolingState,
+                        characteristic: this.Characteristic.CurrentHeaterCoolerState,
                         resource: {
                             getter: () => {
-                                return this.acState.getTargetHeatingCoolingState() ?? null
+                                return this.acState.getCurrentHeaterCoolerState();
+                            },
+                        },
+                        onCreate: (characteristic) => {
+                            this.currentHeatingCoolingStateCharacteristic = characteristic
+                        }
+                    },
+                    {
+                        characteristic: this.Characteristic.TargetHeaterCoolerState,
+                        resource: {
+                            getter: () => {
+                                return this.acState.getTargetHeaterCoolerState()
                             },
                             setter: async (options) => {
-                                this.acState.setTargetHeatingCoolingState(options.value as number);
+                                this.acState.setTargetHeaterCoolerState(options.value);
                                 await this.write();
+
                                 this.currentHeatingCoolingStateCharacteristic?.updateValue(
-                                    this.acState.getCurrentHeatingCoolingState() ?? null
+                                    this.acState.getCurrentHeaterCoolerState()
                                 )
-                                return this.acState.getCurrentHeatingCoolingState() ?? options.value;
                             }
                         }
                     },
@@ -89,43 +101,25 @@ export default class StatefullIRAC extends IRDevice {
                         characteristic: this.Characteristic.CurrentTemperature,
                         resource: {
                             getter: () => {
-                                // Note current temperature is not the ambient temperature but always same to target temperature
                                 return this.acState.getCurrentTemperature() ?? null;
                             },
                         }
                     },
                     {
-                        characteristic: this.Characteristic.TargetTemperature,
+                        characteristic: this.Characteristic.CoolingThresholdTemperature,
                         resource: {
-                            getter: () => {
-                                return this.acState.getTargetTemperature() ?? null;
-                            },
-                            setter: async (options) => {
-                                this.acState.setTargetTemperature(options.value as number);
-                                await this.write();
-                                return options.value;
+                            getter: () => this.getThresholdTemperature(),
+                            setter: (options) => {
+                                return this.setThresholdTemperature(options)
                             }
                         }
                     },
                     {
-                        characteristic: this.Characteristic.TemperatureDisplayUnits,
+                        characteristic: this.Characteristic.HeatingThresholdTemperature,
                         resource: {
-                            getter: () => this.Characteristic.TemperatureDisplayUnits.CELSIUS,
-                            setter: () => {
-                                return this.Characteristic.TemperatureDisplayUnits.CELSIUS;
-                            }
-                        }
-                    }
-                ]
-            },
-            {
-                service: this.Service.Fanv2,
-                characteristics: [
-                    {
-                        characteristic: this.Characteristic.Active,
-                        resource: {
-                            getter: () => {
-                                return this.acState.power == 0 ? this.Characteristic.Active.ACTIVE : this.Characteristic.Active.INACTIVE;
+                            getter: () => this.getThresholdTemperature(),
+                            setter: (options) => {
+                                return this.setThresholdTemperature(options)
                             }
                         }
                     },
@@ -135,9 +129,9 @@ export default class StatefullIRAC extends IRDevice {
                             getter: () => {
                                 return this.acState.getSwingMode();
                             },
-                            setter: (options) => {
+                            setter: async (options) => {
                                 this.acState.setSwingMode(options.value);
-                                this.write();
+                                await this.write();
                             }
                         }
                     },
@@ -147,20 +141,19 @@ export default class StatefullIRAC extends IRDevice {
                             getter: () => {
                                 return this.acState.getFanSpeed();
                             },
-                            setter: throttle((options) => {
+                            setter: throttle(async (options) => {
                                 this.acState.setFanSpeed(options.value);
-                                this.write();
+                                await this.write();
                             }, 300)
                         }
                     },
                     {
-                        characteristic: this.Characteristic.CurrentFanState,
+                        characteristic: this.Characteristic.TemperatureDisplayUnits,
                         resource: {
-                            getter: () => {
-                                return this.acState.getCurrentFanState()
-                            }
+                            getter: () => this.Characteristic.TemperatureDisplayUnits.CELSIUS,
+                            setter: () => this.Characteristic.TemperatureDisplayUnits.CELSIUS
                         }
-                    }
+                    },
                 ]
             }
         ];
@@ -176,5 +169,24 @@ export default class StatefullIRAC extends IRDevice {
                 }
             );
         }
+    }
+
+    /**
+     * Gets the threshold temperature.
+     *
+     */
+    getThresholdTemperature() {
+        return this.acState.getCurrentTemperature();
+    }
+
+    /**
+     * Sets the threshold temperature.
+     *
+     * @param      {CharacteristicValueSetterOptions}  options  The options
+     */
+    async setThresholdTemperature(options: CharacteristicValueSetterOptions) {
+        this.acState.setTargetTemperature(options.value as number);
+        await this.write();
+        return options.value;
     }
 }

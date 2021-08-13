@@ -97,54 +97,47 @@ export default class AcState {
         return `P${this.power}_M${this.mode}_T${this.temperature}_S${this.windSpeed}_D${this.windDirection}`;
     }
 
-    getCurrentHeatingCoolingState(): Nullable<number> {
+    getCurrentHeaterCoolerState(): Nullable<number> {
         if (this.power == Power.Off) {
-            return this.C.CurrentHeatingCoolingState.OFF;
+            return this.C.CurrentHeaterCoolerState.INACTIVE;
         }
 
         switch (this.mode) {
         case Mode.Cooling:
-            return this.C.CurrentHeatingCoolingState.COOL
+            return this.C.CurrentHeaterCoolerState.COOLING
         case Mode.Heating:
-            return this.C.CurrentHeatingCoolingState.HEAT
+            return this.C.CurrentHeaterCoolerState.HEATING
         case Mode.Auto: // TODO: Find out a better way to handle Auto
-            return this.C.CurrentHeatingCoolingState.HEAT;
+            return this.C.CurrentHeaterCoolerState.HEATING;
         default:
-            return this.C.CurrentHeatingCoolingState.OFF;
+            return this.C.CurrentHeaterCoolerState.INACTIVE;
         }
     }
 
-    getTargetHeatingCoolingState(): Nullable<number> {
-        if (this.power == Power.Off) {
-            return this.C.TargetHeatingCoolingState.OFF;
-        }
-
+    getTargetHeaterCoolerState(): Nullable<number> {
         switch (this.mode) {
         case Mode.Cooling:
-            return this.C.TargetHeatingCoolingState.COOL;
+            return this.C.TargetHeaterCoolerState.COOL;
         case Mode.Heating:
-            return this.C.TargetHeatingCoolingState.HEAT;
-        case Mode.Auto: // AUTO
-            return this.C.TargetHeatingCoolingState.AUTO;
+            return this.C.TargetHeaterCoolerState.HEAT;
+        case Mode.Auto:
+            return this.C.TargetHeaterCoolerState.AUTO;
         default:
-            return this.C.TargetHeatingCoolingState.COOL;
+            return this.C.TargetHeaterCoolerState.AUTO;
         }
     }
 
-    setTargetHeatingCoolingState(value: CharacteristicValue) {
+    setTargetHeaterCoolerState(value: CharacteristicValue) {
         switch (value) {
-        case this.C.TargetHeatingCoolingState.OFF:
-            this.power = Power.Off;
-            break;
-        case this.C.TargetHeatingCoolingState.HEAT:
+        case this.C.TargetHeaterCoolerState.HEAT:
             this.power = Power.On;
             this.mode = Mode.Heating;
             break;
-        case this.C.TargetHeatingCoolingState.COOL:
+        case this.C.TargetHeaterCoolerState.COOL:
             this.power = Power.On;
             this.mode = Mode.Cooling;
             break;
-        case this.C.TargetHeatingCoolingState.AUTO:
+        case this.C.TargetHeaterCoolerState.AUTO:
             this.power = Power.On;
             this.mode = Mode.Auto;
             break;
@@ -167,6 +160,10 @@ export default class AcState {
     }
 
     getFanSpeed() {
+        if (this.power == Power.Off) {
+            return 0;
+        }
+
         switch (this.windSpeed) {
         case WindSpeed.Auto:
             return 30;
@@ -185,6 +182,7 @@ export default class AcState {
         switch (true) {
         case value == 0:
             this.windSpeed = WindSpeed.Auto;
+            this.power = Power.Off;
             break;
         case value <= 30:
             this.windSpeed = WindSpeed.Low;
@@ -212,5 +210,13 @@ export default class AcState {
         return this.power == Power.On
             ? this.C.CurrentFanState.BLOWING_AIR
             : this.C.CurrentFanState.INACTIVE;
+    }
+
+    getActive() {
+        return this.power == Power.On ? this.C.Active.ACTIVE : this.C.Active.INACTIVE;
+    }
+
+    setActive(value: CharacteristicValue) {
+        this.power = value == this.C.Active.ACTIVE ? Power.On : Power.Off;
     }
 }
